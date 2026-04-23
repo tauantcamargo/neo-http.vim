@@ -56,10 +56,21 @@ local function parse_block(lines, block_start, block_end, file_vars)
     i = i + 1
   end
 
-  -- Collect request-scoped @var lines before the method line
+  -- Collect request-scoped directives before the method line
   local req_var_end = i - 1
+  local captures   = {}
+  local assertions = {}
   while i <= block_end do
-    if lines[i]:match("^@%S+%s*=") then
+    local cap_name, cap_path = lines[i]:match("^@capture%s+(%S+)%s*=%s*(%S+)%s*$")
+    local assert_expr        = lines[i]:match("^@assert%s+(.+)$")
+
+    if cap_name then
+      table.insert(captures, { name = cap_name, path = cap_path })
+      i = i + 1
+    elseif assert_expr then
+      table.insert(assertions, { expr = assert_expr:match("^%s*(.-)%s*$") })
+      i = i + 1
+    elseif lines[i]:match("^@%S+%s*=") then
       req_var_end = i
       i = i + 1
     else
@@ -137,6 +148,9 @@ local function parse_block(lines, block_start, block_end, file_vars)
     vars       = vars,
     url_encode = vars["url_encode"] == "true",
     ssl_verify = vars["ssl_verify"] ~= "false",
+    cookie_jar = vars["cookie_jar"] == "true",
+    captures   = captures,
+    assertions = assertions,
   }
 end
 
