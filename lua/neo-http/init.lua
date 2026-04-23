@@ -10,6 +10,7 @@ local capture    = require("neo-http.capture")
 local cookies    = require("neo-http.cookies")
 local history    = require("neo-http.history")
 local assert_mod = require("neo-http.assert")
+local importer   = require("neo-http.importer")
 
 local _state = {
   last_raw_body = nil,
@@ -199,6 +200,34 @@ jq_filter = function()
   end)
 end
 
+local function import_collection()
+  vim.ui.input({
+    prompt = "Collection file (.json or .bru): ",
+    completion = "file",
+  }, function(source_path)
+    if not source_path or source_path == "" then return end
+    source_path = vim.fn.expand(source_path)
+
+    local default_out = vim.fn.fnamemodify(source_path, ":t:r") .. ".http"
+    vim.ui.input({
+      prompt = "Save as (.http): ",
+      default = default_out,
+      completion = "file",
+    }, function(output_path)
+      if not output_path or output_path == "" then return end
+      output_path = vim.fn.expand(output_path)
+
+      local ok, result = importer.import(source_path, output_path)
+      if ok then
+        vim.notify("[neo-http] Imported → " .. result, vim.log.levels.INFO)
+        vim.cmd("edit " .. vim.fn.fnameescape(output_path))
+      else
+        vim.notify("[neo-http] Import failed: " .. result, vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
 local function copy_as_curl()
   local bufnr = vim.api.nvim_get_current_buf()
   local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
@@ -242,6 +271,9 @@ function M.setup(opts)
       filetype = "http",
     }
   end)
+
+  -- Global keymap — import works from any buffer
+  vim.keymap.set("n", "<leader>hi", import_collection, { desc = "Import collection" })
 
   vim.api.nvim_create_autocmd("FileType", {
     pattern = "http",
