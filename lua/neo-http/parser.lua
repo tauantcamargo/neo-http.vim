@@ -31,6 +31,12 @@ local function parse_vars(lines, from, to)
   return vars
 end
 
+local function parse_directive_var(line)
+  local key, val = line:match("^@(%S+)%s*=%s*(.+)$")
+  if not key then return nil, nil end
+  return key, val:match("^%s*(.-)%s*$")
+end
+
 local function resolve(str, vars)
   -- gsub returns (result, count) — capture only result to avoid multi-return
   -- expansion when used as a table.insert argument
@@ -46,6 +52,12 @@ local function resolve(str, vars)
     end
   end)
   return result
+end
+
+local function resolve_silent(str, vars)
+  return (str:gsub("{{([^}]+)}}", function(key)
+    return vars[key] or ("{{" .. key .. "}}")
+  end))
 end
 
 local function parse_block(lines, block_start, block_end, file_vars)
@@ -79,7 +91,6 @@ local function parse_block(lines, block_start, block_end, file_vars)
   end
 
   local req_vars = parse_vars(lines, block_start + 1, req_var_end)
-  local vars = vim.tbl_extend("force", file_vars, req_vars)
 
   -- Skip blank lines between @var declarations and the METHOD URL line
   while i <= block_end and lines[i]:match("^%s*$") do
@@ -103,12 +114,17 @@ local function parse_block(lines, block_start, block_end, file_vars)
     end
   end
 
-  -- Parse headers until blank separator
+  -- Parse headers and inline request directives until blank separator
   local headers = {}
   while i <= block_end and not lines[i]:match("^%s*$") do
-    local header = lines[i]:match("^(.+:.+)$")
-    if header then
-      table.insert(headers, header:match("^%s*(.-)%s*$"))
+    local key, val = parse_directive_var(lines[i])
+    if key then
+      req_vars[key] = val
+    else
+      local header = lines[i]:match("^(.+:.+)$")
+      if header then
+        table.insert(headers, header:match("^%s*(.-)%s*$"))
+      end
     end
     i = i + 1
   end
@@ -126,6 +142,8 @@ local function parse_block(lines, block_start, block_end, file_vars)
   local body       = #body_lines > 0 and table.concat(body_lines, "\n") or nil
   local is_graphql = body ~= nil and body:match("^%s*#%s*%[graphql%]") ~= nil
 
+  local vars = vim.tbl_extend("force", file_vars, req_vars)
+
   url = resolve(url, vars)
   local resolved_headers = {}
   for _, h in ipairs(headers) do
@@ -135,7 +153,7 @@ local function parse_block(lines, block_start, block_end, file_vars)
 
   -- @auth directive → inject Authorization header
   if vars["auth"] then
-    local auth_header = require("neo-http.auth").resolve(vars["auth"])
+    local auth_header = require("neo-http.auth").resolve(resolve_silent(vars["auth"], vars))
     if auth_header then
       table.insert(resolved_headers, auth_header)
     end
