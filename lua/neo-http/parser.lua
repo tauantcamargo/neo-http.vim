@@ -41,15 +41,7 @@ local function resolve(str, vars)
   -- gsub returns (result, count) — capture only result to avoid multi-return
   -- expansion when used as a table.insert argument
   local result = str:gsub("{{([^}]+)}}", function(key)
-    if vars[key] then
-      return vars[key]
-    else
-      vim.notify(
-        string.format("[neo-http] Unresolved variable: {{%s}}", key),
-        vim.log.levels.WARN
-      )
-      return "{{" .. key .. "}}"
-    end
+    return vars[key] or ("{{" .. key .. "}}")
   end)
   return result
 end

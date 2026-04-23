@@ -30,12 +30,31 @@ local function extract_body(raw)
   return raw
 end
 
-local function apply_env_vars(str, env_vars)
+local function apply_env_vars(str, env_vars, unresolved)
   if not str then return nil end
   str = dynamic.resolve(str)
   return (str:gsub("{{([^}]+)}}", function(key)
-    return env_vars[key] or ("{{" .. key .. "}}")
+    if env_vars[key] then
+      return env_vars[key]
+    end
+    if unresolved and not key:match("^%$") and not unresolved[key] then
+      unresolved[key] = true
+      vim.notify(
+        string.format("[neo-http] Unresolved variable: {{%s}}", key),
+        vim.log.levels.WARN
+      )
+    end
+    return "{{" .. key .. "}}"
   end))
+end
+
+local function apply_request_env_vars(req, env_vars)
+  local unresolved = {}
+  req.url = apply_env_vars(req.url, env_vars, unresolved)
+  for i, h in ipairs(req.headers) do
+    req.headers[i] = apply_env_vars(h, env_vars, unresolved)
+  end
+  req.body = apply_env_vars(req.body, env_vars, unresolved)
 end
 
 local jq_filter  -- forward declaration
@@ -51,11 +70,7 @@ local function run_request()
   end
 
   local env_vars = env.get_vars()
-  req.url = apply_env_vars(req.url, env_vars)
-  for i, h in ipairs(req.headers) do
-    req.headers[i] = apply_env_vars(h, env_vars)
-  end
-  req.body = apply_env_vars(req.body, env_vars)
+  apply_request_env_vars(req, env_vars)
 
   vim.notify(string.format("[neo-http] %s %s", req.method, req.url), vim.log.levels.INFO)
 
@@ -254,11 +269,7 @@ local function copy_as_curl()
   end
 
   local env_vars = env.get_vars()
-  req.url = apply_env_vars(req.url, env_vars)
-  for i, h in ipairs(req.headers) do
-    req.headers[i] = apply_env_vars(h, env_vars)
-  end
-  req.body = apply_env_vars(req.body, env_vars)
+  apply_request_env_vars(req, env_vars)
 
   local curl_str = runner.to_curl_string(req)
   vim.fn.setreg("+", curl_str)
