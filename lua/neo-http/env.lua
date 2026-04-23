@@ -48,7 +48,10 @@ end
 
 function M.get_vars()
   local data = load_env_file()
-  if not data then return {} end
+  if not data then
+    local capture = require("neo-http.capture")
+    return capture.get_all()
+  end
 
   local env_vars = data[_state.active_env]
   if not env_vars then
@@ -56,14 +59,18 @@ function M.get_vars()
       string.format("[neo-http] Environment '%s' not found in %s", _state.active_env, _state.env_file),
       vim.log.levels.WARN
     )
-    return {}
+    local capture = require("neo-http.capture")
+    return capture.get_all()
   end
 
   local resolved = {}
   for k, v in pairs(env_vars) do
     resolved[k] = resolve_shell_env(tostring(v))
   end
-  return resolved
+
+  -- Captured variables (from @capture directives) override everything else
+  local capture = require("neo-http.capture")
+  return vim.tbl_extend("force", resolved, capture.get_all())
 end
 
 function M.get_active_env()
