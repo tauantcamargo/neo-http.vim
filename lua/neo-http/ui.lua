@@ -101,7 +101,16 @@ function M.show_response(result, is_json)
     table.insert(output, string.rep("─", 40))
   end
 
-  table.insert(output, string.format("%s  [%dms]", parsed.status_line, result.elapsed_ms))
+  local timing_str = ""
+  if result.timing and result.timing.total then
+    timing_str = string.format("  dns:%dms  tcp:%dms  ttfb:%dms  total:%dms",
+      result.timing.dns  or 0,
+      (result.timing.tcp  or 0) - (result.timing.dns  or 0),
+      (result.timing.ttfb or 0) - (result.timing.tcp  or 0),
+      result.timing.total or 0
+    )
+  end
+  table.insert(output, string.format("%s  [%dms]%s", parsed.status_line, result.elapsed_ms, timing_str))
   for _, h in ipairs(parsed.headers) do
     table.insert(output, h)
   end

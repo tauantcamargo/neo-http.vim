@@ -2,6 +2,28 @@ local M = {}
 
 local _config = { backend = "curl" }
 
+-- Timing fields appended to stdout after the response body.
+-- Split on this sentinel when parsing the response.
+local TIMING_SENTINEL = "\nNEOHTTP_TIMING\n"
+local TIMING_FORMAT = TIMING_SENTINEL
+  .. "dns:%{time_namelookup}"
+  .. "\ntcp:%{time_connect}"
+  .. "\nttfb:%{time_starttransfer}"
+  .. "\ntotal:%{time_total}\n"
+
+local function parse_timing(raw)
+  local sep = raw:find("\nNEOHTTP_TIMING\n", 1, true)
+  if not sep then return raw, {} end
+
+  local response = raw:sub(1, sep - 1)
+  local timing_str = raw:sub(sep + #"\nNEOHTTP_TIMING\n")
+  local timing = {}
+  for key, val in timing_str:gmatch("(%a+):([%d%.]+)") do
+    timing[key] = math.floor(tonumber(val) * 1000)  -- convert to ms
+  end
+  return response, timing
+end
+
 local function percent_encode(str)
   return (str:gsub("([^%w%-%.%_%~])", function(c)
     return string.format("%%%02X", string.byte(c))
@@ -111,6 +133,9 @@ local function build_curl_command(req)
   end
 
   table.insert(cmd, req.url)
+  -- Append timing data after the response body
+  table.insert(cmd, "--write-out")
+  table.insert(cmd, TIMING_FORMAT)
   return cmd
 end
 
@@ -158,13 +183,15 @@ function M.execute(req, callback)
     end,
   }, function(result)
     local elapsed = vim.uv.now() - start_ms
-    local raw = table.concat(chunks)
+    local raw_full = table.concat(chunks)
+    local raw, timing = parse_timing(raw_full)
 
     vim.schedule(function()
       callback({
-        raw = raw,
-        exit_code = result.code,
+        raw        = raw,
+        exit_code  = result.code,
         elapsed_ms = elapsed,
+        timing     = timing,
       })
     end)
   end)
