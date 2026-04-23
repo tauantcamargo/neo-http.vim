@@ -123,7 +123,8 @@ local function parse_block(lines, block_start, block_end, file_vars)
     table.insert(body_lines, lines[i])
     i = i + 1
   end
-  local body = #body_lines > 0 and table.concat(body_lines, "\n") or nil
+  local body       = #body_lines > 0 and table.concat(body_lines, "\n") or nil
+  local is_graphql = body ~= nil and body:match("^%s*#%s*%[graphql%]") ~= nil
 
   url = resolve(url, vars)
   local resolved_headers = {}
@@ -148,9 +149,10 @@ local function parse_block(lines, block_start, block_end, file_vars)
     vars       = vars,
     url_encode = vars["url_encode"] == "true",
     ssl_verify = vars["ssl_verify"] ~= "false",
-    cookie_jar = vars["cookie_jar"] == "true",
-    captures   = captures,
-    assertions = assertions,
+    cookie_jar   = vars["cookie_jar"] == "true",
+    captures     = captures,
+    assertions   = assertions,
+    is_graphql   = is_graphql,
   }
 end
 

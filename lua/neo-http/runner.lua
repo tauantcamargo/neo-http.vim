@@ -131,6 +131,19 @@ end
 function M.execute(req, callback)
   if req.url_encode then req.url = encode_url(req.url) end
 
+  -- Transform GraphQL body into proper JSON payload
+  if req.is_graphql and req.body then
+    local gql = require("neo-http.graphql")
+    req.body = gql.build_payload(req.body)
+    local has_ct = false
+    for _, h in ipairs(req.headers) do
+      if h:lower():match("^content%-type:") then has_ct = true; break end
+    end
+    if not has_ct then
+      table.insert(req.headers, "Content-Type: application/json")
+    end
+  end
+
   local cmd = _config.backend == "httpie"
     and build_httpie_command(req)
     or build_curl_command(req)
