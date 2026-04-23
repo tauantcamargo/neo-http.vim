@@ -1,46 +1,34 @@
 # neo-http.nvim
 
-A lightweight HTTP client for Neovim. Write requests in `.http` files and run them without leaving the editor.
+A fast, editor-native HTTP client for Neovim.
 
----
+Write requests in `.http` files, execute them with a keymap, inspect formatted responses in a split, and keep environment variables, captures, assertions, cookies, GraphQL, and WebSocket workflows inside your editor.
 
-## Features
+## Highlights
 
-- Run HTTP requests from `.http` files with `<leader>hr`
-- `curl` (default) or `httpie` backend
-- Three-tier variable system: request-scope > file-scope > env file
-- Built-in dynamic variables: `{{$timestamp}}`, `{{$uuid}}`, `{{$randomInt}}`, etc.
-- Auth helpers: `@auth = basic user:pass` / `@auth = bearer TOKEN`
-- Multipart file upload with `file://` references
-- SSL control: `@ssl_verify = false`
-- URL encoding: `@url_encode = true`
-- **Request chaining**: `@capture token = $.token` → use `{{token}}` in next request
-- **Cookie jar**: `@cookie_jar = true` persists cookies across requests
-- **Response history**: browse past responses with `<leader>hH`
-- **Assertions**: `@assert status == 200` with pass/fail display in response buffer
-- **Import**: convert Postman, Insomnia, and Bruno collections with `<leader>hi`
-- **GraphQL**: `# [graphql]` body marker — auto-builds `{"query":"...","variables":{}}`
-- **WebSocket**: `WS`/`WSS` method — persistent console with send/disconnect keymaps
-- **XML/HTML formatting**: auto-format via `xmllint` / `prettier` based on content-type
-- **Timing breakdown**: DNS / TCP / TTFB shown in the response status line
-- JSON auto-format + interactive jq filtering
-- Syntax highlighting for `.http` files (vim syntax + optional Treesitter)
-- Vertical split response buffer with `q` to close
-
----
+- Run HTTP requests from `.http` files with a `curl` or `httpie` backend.
+- Work with file, request, environment, captured, and dynamic variables.
+- Format JSON, XML, and HTML responses when optional tools are available.
+- Filter JSON responses interactively with `jq`.
+- Chain requests with `@capture` and validate responses with `@assert`.
+- Persist cookies per session with `@cookie_jar = true`.
+- Import Postman, Insomnia, and Bruno collections.
+- Run GraphQL requests from readable query blocks.
+- Open persistent WebSocket consoles from `WS` and `WSS` request blocks.
+- Browse in-memory response history and copy requests as `curl`.
+- Use built-in Vim syntax highlighting or optional Tree-sitter highlighting.
 
 ## Requirements
 
-| Tool | Role |
-|------|------|
-| `curl` (default) or `httpie` | Executes requests |
-| `jq` | Optional — JSON auto-format + filtering |
-| `websocat` | Optional — WebSocket support (`brew install websocat`) |
-| `xmllint` | Optional — XML response formatting (`brew install libxml2`) |
-| `prettier` | Optional — HTML response formatting (`npm i -g prettier`) |
-| nvim-treesitter + `:TSInstall http` | Optional — richer syntax highlighting |
-
----
+| Tool | Required | Used for |
+|------|----------|----------|
+| Neovim 0.10+ | Yes | `vim.system`, `vim.uv`, and modern Lua APIs |
+| `curl` or `httpie` | Yes | Request execution |
+| `jq` | No | JSON formatting and filtering |
+| `websocat` | No | WebSocket connections |
+| `xmllint` | No | XML formatting |
+| `prettier` | No | HTML formatting |
+| `nvim-treesitter` + `:TSInstall http` | No | Richer `.http` highlighting |
 
 ## Installation
 
@@ -51,11 +39,12 @@ A lightweight HTTP client for Neovim. Write requests in `.http` files and run th
   "tauantcamargo/neo-http.vim",
   ft = { "http" },
   opts = {
-    backend        = "curl",   -- "curl" | "httpie"
-    split_width    = 0.5,      -- response pane width (0.1–0.9)
+    backend        = "curl",                 -- "curl" | "httpie"
+    split_width    = 0.5,                    -- response pane width, 0.1-0.9
     env_file       = ".http-client.env.json",
-    jq_auto_format = true,
     default_env    = "dev",
+    history_max    = 20,
+    jq_auto_format = true,
   },
   config = function(_, opts)
     require("neo-http").setup(opts)
@@ -63,55 +52,21 @@ A lightweight HTTP client for Neovim. Write requests in `.http` files and run th
 }
 ```
 
----
-
 ## Quick Start
 
-```
-1. Create any file:  api.http
-2. Write a request   (see format below)
-3. <leader>hr        run it
-```
-
-The response opens in a vertical split. Press `q` to close it.
-
----
-
-## Keymaps
-
-Active inside `.http` files. `<leader>hj` also works from the response buffer.
-
-| Key | Action |
-|-----|--------|
-| `<leader>hr` | Run request under cursor |
-| `<leader>hl` | Pick any request in the file |
-| `<leader>he` | Switch active environment |
-| `<leader>hj` | jq filter (empty input = reset) |
-| `<leader>hc` | Copy request as `curl` command |
-| `<leader>hH` | Browse response history |
-| `<leader>hx` | Clear captured variables |
-| `<leader>hC` | Clear cookie jar |
-| `<leader>hi` | Import Postman / Insomnia / Bruno collection |
-| `<leader>hwm` | WebSocket — send a message |
-| `<leader>hwd` | WebSocket — disconnect |
-| `q` | Close response / WebSocket buffer |
-
----
-
-## File Format
+Create `api.http`:
 
 ```http
-# File-level variables
 @base_url = https://api.example.com
-@token    = my-token
+@token = dev-token
 
 ###
-# Simple GET
+# List users
 GET {{base_url}}/users
 Authorization: Bearer {{token}}
 
 ###
-# POST with JSON body
+# Create user
 POST {{base_url}}/users
 Content-Type: application/json
 @auth = bearer {{token}}
@@ -120,20 +75,47 @@ Content-Type: application/json
   "name": "Jane Doe",
   "role": "admin"
 }
+```
+
+Open the file in Neovim and press `<leader>hr` with the cursor inside a request block. The response opens in a vertical split. Press `q` to close it.
+
+## Keymaps
+
+Keymaps are active inside `.http` buffers. `<leader>hj` also works from the response buffer after a JSON response.
+
+| Key | Action |
+|-----|--------|
+| `<leader>hr` | Run request under cursor |
+| `<leader>hl` | Select and run a request in the file |
+| `<leader>he` | Select the active environment |
+| `<leader>hj` | Apply a `jq` filter, or reset with an empty input |
+| `<leader>hc` | Copy the current request as a `curl` command |
+| `<leader>hH` | Browse response history |
+| `<leader>hx` | Clear captured variables |
+| `<leader>hC` | Clear the cookie jar |
+| `<leader>hi` | Import a Postman, Insomnia, or Bruno collection |
+| `<leader>hwm` | Send a WebSocket message |
+| `<leader>hwd` | Disconnect a WebSocket session |
+| `q` | Close the response or WebSocket buffer |
+
+## Request Format
+
+Requests are separated by `###`. A block can include an optional name comment, request-scoped variables and directives, the request line, headers, and an optional body.
+
+```http
+# File-level variables
+@base_url = https://api.example.com
+@token = my-token
 
 ###
-# Dynamic variables
-GET {{base_url}}/events?after={{$timestamp}}&trace={{$uuid}}
+# Simple GET
+GET {{base_url}}/users
+Authorization: Bearer {{token}}
 
 ###
 # URL-encode query values
 @url_encode = true
 GET {{base_url}}/search?q=hello world&tag=c++ language
-
-###
-# Skip SSL verification
-@ssl_verify = false
-GET https://localhost:8443/health
 
 ###
 # Multipart upload
@@ -144,21 +126,29 @@ name=Jane Doe
 avatar=file://~/Pictures/photo.jpg
 ```
 
----
+Multi-line query parameters are supported:
 
-## Variable System
+```http
+###
+GET {{base_url}}/search
+?q=neovim http client
+&limit=20
+```
 
-| Priority | Scope | Where |
-|----------|-------|-------|
-| **1** (highest) | Request block | `@var = value` before the `METHOD` line |
-| **2** | Whole file | `@var = value` before the first `###` |
-| **3** (lowest) | Environment file | `.http-client.env.json` at project root |
+## Variables
 
-Reference variables with `{{var_name}}`. Unresolved variables show a warning and stay as-is.
+Variables use `{{name}}` syntax.
 
----
+| Priority | Source | Example |
+|----------|--------|---------|
+| 1 | Captured response values | `@capture token = $.token` |
+| 2 | Request block | `@token = request-token` |
+| 3 | File scope, before the first `###` | `@base_url = https://api.example.com` |
+| 4 | Environment file | `.http-client.env.json` |
 
-## Environment File
+Unresolved variables stay unchanged and produce a warning.
+
+### Environment Files
 
 Create `.http-client.env.json` at your project root:
 
@@ -175,22 +165,9 @@ Create `.http-client.env.json` at your project root:
 }
 ```
 
-`{{$env VAR_NAME}}` reads from your shell — keeps secrets out of committed files.
+`{{$env VAR_NAME}}` reads from your shell environment, which keeps secrets out of committed files. Switch environments with `<leader>he`.
 
----
-
-## Request Directives
-
-| Directive | Description |
-|-----------|-------------|
-| `@url_encode = true` | Percent-encode query string values |
-| `@ssl_verify = false` | Skip TLS certificate validation |
-| `@auth = basic user:pass` | Injects `Authorization: Basic <base64>` |
-| `@auth = bearer TOKEN` | Injects `Authorization: Bearer TOKEN` |
-
----
-
-## Dynamic Variables
+### Dynamic Variables
 
 | Variable | Example |
 |----------|---------|
@@ -201,15 +178,38 @@ Create `.http-client.env.json` at your project root:
 | `{{$randomInt}}` | `742` |
 | `{{$randomFloat}}` | `583.142700` |
 
----
+## Directives
 
-## Request Chaining
+Request directives can be placed before the `METHOD URL` line or in the header section before the blank line.
 
-Capture a value from a response and use it in subsequent requests:
+| Directive | Description |
+|-----------|-------------|
+| `@auth = basic user:pass` | Inject `Authorization: Basic <base64>` |
+| `@auth = bearer TOKEN` | Inject `Authorization: Bearer TOKEN` |
+| `@url_encode = true` | Percent-encode query string values |
+| `@ssl_verify = false` | Skip TLS certificate validation |
+| `@cookie_jar = true` | Persist cookies across requests |
+
+Example:
 
 ```http
 ###
-# Step 1 — login and capture token
+# Inline directives in the header section
+POST {{base_url}}/users
+Content-Type: application/json
+@auth = bearer {{token}}
+@ssl_verify = false
+
+{ "name": "Jane Doe" }
+```
+
+## Request Chaining
+
+Capture a value from one response and use it in later requests:
+
+```http
+###
+# Step 1: login and capture token
 @capture auth_token = $.token
 POST https://api.example.com/login
 Content-Type: application/json
@@ -217,20 +217,70 @@ Content-Type: application/json
 {"username": "jane", "password": "secret"}
 
 ###
-# Step 2 — use captured token automatically
+# Step 2: use captured token
 GET https://api.example.com/profile
 Authorization: Bearer {{auth_token}}
 ```
 
-Path syntax: `$.field`, `$.nested.field`, `$.items[0].name`
+Supported capture paths include `$.field`, `$.nested.field`, and `$.items[0].name`. Clear captured variables with `<leader>hx`.
 
-Clear captured variables with `<leader>hx`.
+## Assertions
 
----
+Assertions run after the response returns and are displayed above the response body.
 
-## Cookie Jar
+```http
+###
+@assert status == 200
+@assert body.user.id != null
+@assert body.items[0].price > 0
+GET https://api.example.com/cart
+```
 
-Persist cookies across requests in a session:
+Supported operators: `==`, `!=`, `>`, `>=`, `<`, `<=`.
+
+Supported targets: `status` and `body.<path>`.
+
+Example output:
+
+```text
+Assertions
+────────────────────────────────────────
+✓ status == 200                         → PASS  (got: 200)
+✓ body.user.id != null                  → PASS  (got: 42)
+✗ body.items[0].price > 0               → FAIL  (got: nil)
+────────────────────────────────────────
+```
+
+## Response Buffer
+
+Responses open in a reusable vertical split with:
+
+- The resolved request line.
+- HTTP status, elapsed time, and curl timing breakdown when available.
+- Response headers.
+- Assertion results.
+- Formatted body content when optional formatters are installed.
+
+For curl-backed requests, timing appears in the status line:
+
+```text
+HTTP/2 200  [145ms]  dns:12ms  tcp:8ms  ttfb:120ms  total:145ms
+```
+
+## JSON, XML, and HTML Formatting
+
+| Content | Behavior |
+|---------|----------|
+| JSON | Auto-formatted with `jq` when installed, and filterable with `<leader>hj` |
+| XML | Auto-formatted with `xmllint` when installed |
+| HTML | Auto-formatted with `prettier` when installed |
+| Anything else | Shown as raw text |
+
+Formatting degrades to raw output when the optional tool is missing.
+
+## Cookies
+
+Enable the cookie jar per request:
 
 ```http
 ###
@@ -242,65 +292,35 @@ POST https://api.example.com/login
 GET https://api.example.com/dashboard
 ```
 
-Cookies are stored at `~/.cache/nvim/neo-http-cookies.txt`. Clear with `<leader>hC`.
-
----
+Cookies are stored at `~/.cache/nvim/neo-http-cookies.txt`. Clear them with `<leader>hC`.
 
 ## Response History
 
-Every request is stored in an in-memory ring buffer (20 entries per request by default).
+Each request keeps an in-memory ring buffer of past responses. Open it with `<leader>hH`, choose a request, then choose a past response by timestamp and status code.
 
-Press `<leader>hH` to open a two-level picker: choose a request, then choose a past response by timestamp and status code. The selected response is loaded into the response buffer.
+Configure the limit:
 
-Configure with `opts.history_max = 50`.
-
----
-
-## Assertions
-
-Add pass/fail checks that run after each response:
-
-```http
-###
-@assert status == 200
-@assert body.user.id != null
-@assert body.items[0].price > 0
-GET https://api.example.com/cart
+```lua
+require("neo-http").setup({
+  history_max = 50,
+})
 ```
-
-Results appear in the response buffer between the headers and body:
-
-```
-Assertions
-────────────────────────────────────────
-✓ status == 200                          → PASS  (got: 200)
-✓ body.user.id != null                   → PASS  (got: 42)
-✗ body.items[0].price > 0               → FAIL  (got: nil)
-────────────────────────────────────────
-```
-
-Supported operators: `==` `!=` `>` `>=` `<` `<=`
-Supported targets: `status`, `body.<path>`
-
----
 
 ## Importing Collections
 
-Press `<leader>hi` from any buffer to import an existing collection:
+Press `<leader>hi` from any buffer to import an existing collection into `.http` format.
 
-| Source | Format detected by |
-|--------|--------------------|
-| Postman | JSON with `info.schema` field (v2.1) |
-| Insomnia | JSON with `resources` field (v4 export) |
-| Bruno | `.bru` file extension |
+| Source | Supported format |
+|--------|------------------|
+| Postman | v2.1 JSON collection |
+| Insomnia | v4 JSON export |
+| Bruno | `.bru` files |
 
-You will be prompted for the source file and an output `.http` path. The file opens automatically after import, ready to run with `<leader>hr`.
-
----
+The importer prompts for the source file and output `.http` path, then opens the generated file.
 
 ## GraphQL
 
-Mark the body with `# [graphql]`. Add variables in a `# [variables]` block:
+Mark a request body with `# [graphql]`. Add variables in a `# [variables]` block.
 
 ```http
 ###
@@ -309,20 +329,21 @@ Content-Type: application/json
 
 # [graphql]
 query GetUser($id: ID!) {
-  user(id: $id) { name email }
+  user(id: $id) {
+    name
+    email
+  }
 }
 
 # [variables]
 { "id": "123" }
 ```
 
-The plugin wraps it into `{"query":"...","variables":{...}}` automatically. `Content-Type: application/json` is injected if missing.
-
----
+The plugin sends a JSON payload shaped as `{"query":"...","variables":{...}}`. `Content-Type: application/json` is injected when missing.
 
 ## WebSocket
 
-Use `WS` or `WSS` as the method and press `<leader>hr` to connect:
+Use `WS` or `WSS` as the request method:
 
 ```http
 ###
@@ -330,44 +351,25 @@ WS wss://echo.websocket.org
 Origin: https://echo.websocket.org
 ```
 
-A console buffer opens showing all messages. Requires `websocat` (`brew install websocat`).
+Press `<leader>hr` to connect. A console buffer opens with incoming and outgoing messages. WebSocket support requires `websocat`.
 
 | Key | Action |
 |-----|--------|
-| `<leader>hr` | Connect (on a WS/WSS block) |
+| `<leader>hr` | Connect from a `WS` or `WSS` block |
 | `<leader>hwm` | Send a message |
 | `<leader>hwd` | Disconnect |
-| `q` | Close console + disconnect |
+| `q` | Close console and disconnect |
 
----
+## Development
 
-## Timing Breakdown
+There is no build step or formal test runner. Use Neovim smoke checks when changing the plugin:
 
-Every response shows a detailed timing line beneath the status:
-
+```sh
+nvim --clean --cmd "set rtp^=$PWD" +"lua require('neo-http').setup()" test.http
+nvim --headless --clean --cmd "set rtp^=$PWD" +"lua require('neo-http').setup()" +qa
 ```
-HTTP/2 200  [145ms]  dns:12ms  tcp:8ms  ttfb:120ms  total:145ms
-```
 
-- **dns** — name resolution time
-- **tcp** — time to TCP connect (minus dns)
-- **ttfb** — time to first byte (minus tcp connect)
-- **total** — full request duration
-
----
-
-## XML / HTML Responses
-
-Responses with `Content-Type: application/xml` or `text/html` are auto-formatted and the response buffer filetype is set for syntax highlighting.
-
-| Format | Tool |
-|--------|------|
-| XML | `xmllint` (`brew install libxml2`) |
-| HTML | `prettier` (`npm i -g prettier`) |
-
-Falls back to raw text if the tool is not installed.
-
----
+When changing parsing or execution, manually test variables, headers, JSON bodies, GraphQL markers, multipart files, captures, assertions, cookies, SSL flags, and URL encoding.
 
 ## License
 
