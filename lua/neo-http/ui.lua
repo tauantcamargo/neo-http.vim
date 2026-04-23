@@ -105,6 +105,15 @@ function M.show_response(result, is_json)
   for _, h in ipairs(parsed.headers) do
     table.insert(output, h)
   end
+  -- Assertion results shown before body so they're immediately visible
+  if result.assert_lines and #result.assert_lines > 0 then
+    table.insert(output, "Assertions")
+    table.insert(output, string.rep("─", 40))
+    for _, line in ipairs(result.assert_lines) do
+      table.insert(output, line)
+    end
+  end
+
   table.insert(output, string.rep("─", 40))
   for _, line in ipairs(vim.split(parsed.body, "\n")) do
     table.insert(output, line)

@@ -1,11 +1,15 @@
 local M = {}
 
-local parser  = require("neo-http.parser")
-local env     = require("neo-http.env")
-local runner  = require("neo-http.runner")
-local ui      = require("neo-http.ui")
-local jq      = require("neo-http.jq")
-local dynamic = require("neo-http.dynamic")
+local parser     = require("neo-http.parser")
+local env        = require("neo-http.env")
+local runner     = require("neo-http.runner")
+local ui         = require("neo-http.ui")
+local jq         = require("neo-http.jq")
+local dynamic    = require("neo-http.dynamic")
+local capture    = require("neo-http.capture")
+local cookies    = require("neo-http.cookies")
+local history    = require("neo-http.history")
+local assert_mod = require("neo-http.assert")
 
 local _state = {
   last_raw_body = nil,
@@ -31,7 +35,7 @@ local function apply_env_vars(str, env_vars)
   end))
 end
 
-local jq_filter  -- forward declaration so run_request callback can reference it
+local jq_filter  -- forward declaration
 
 local function run_request()
   local bufnr = vim.api.nvim_get_current_buf()
@@ -52,12 +56,31 @@ local function run_request()
 
   vim.notify(string.format("[neo-http] %s %s", req.method, req.url), vim.log.levels.INFO)
 
+  local req_name = req.method .. " " .. req.url
+
   runner.execute(req, function(result)
     local is_json = is_json_response(result.raw)
     local body = extract_body(result.raw)
 
     _state.last_raw_body = body
     _state.last_is_json  = is_json
+
+    -- @capture — extract values for request chaining
+    if req.captures and #req.captures > 0 then
+      capture.apply(req.captures, body)
+    end
+
+    -- @assert — evaluate pass/fail conditions
+    if req.assertions and #req.assertions > 0 then
+      local assert_results = assert_mod.run(req.assertions, result.raw, body)
+      local assert_lines, all_pass = assert_mod.format(assert_results)
+      result.assert_lines = assert_lines
+      if not all_pass then
+        vim.notify("[neo-http] Some assertions FAILED — see response buffer", vim.log.levels.WARN)
+      else
+        vim.notify("[neo-http] All assertions passed", vim.log.levels.INFO)
+      end
+    end
 
     if is_json and jq.has_jq() then
       local formatted = jq.format(body)
@@ -69,10 +92,9 @@ local function run_request()
 
     result.request_line = req.method .. " " .. req.url
     _state.last_result = result
+    history.push(req_name, result, is_json)
     ui.show_response(result, is_json)
 
-    -- Also bind <leader>hj on the response buffer so the user can
-    -- filter from either side without switching back to the .http file
     local rbuf = ui.get_buf()
     if rbuf then
       vim.keymap.set("n", "<leader>hj", function() jq_filter() end,
@@ -104,10 +126,7 @@ local function select_environment()
   local envs = env.list_envs()
 
   if #envs == 0 then
-    vim.notify(
-      "[neo-http] No environment file found (.neo-http.env.json)",
-      vim.log.levels.WARN
-    )
+    vim.notify("[neo-http] No environment file found (.http-client.env.json)", vim.log.levels.WARN)
     return
   end
 
@@ -122,6 +141,34 @@ local function select_environment()
     if not selected then return end
     env.set_active_env(selected)
     vim.notify("[neo-http] Active environment: " .. selected, vim.log.levels.INFO)
+  end)
+end
+
+local function show_history()
+  local names = history.list_names()
+  if #names == 0 then
+    vim.notify("[neo-http] No history yet — run a request first", vim.log.levels.WARN)
+    return
+  end
+
+  vim.ui.select(names, { prompt = "Request history:" }, function(name)
+    if not name then return end
+    local entries = history.get(name)
+
+    vim.ui.select(entries, {
+      prompt = "Select response:",
+      format_item = function(e)
+        local status = e.result.raw:match("HTTP/%S+%s+(%d+)") or "???"
+        return string.format("%s  %s  [%dms]",
+          os.date("%H:%M:%S", e.timestamp), status, e.result.elapsed_ms)
+      end,
+    }, function(entry)
+      if not entry then return end
+      _state.last_result   = entry.result
+      _state.last_is_json  = entry.is_json
+      _state.last_raw_body = extract_body(entry.result.raw)
+      ui.show_response(entry.result, entry.is_json)
+    end)
   end)
 end
 
@@ -181,6 +228,8 @@ function M.setup(opts)
   runner.setup(opts)
   ui.setup(opts)
   jq.setup(opts)
+  cookies.setup(opts)
+  history.setup(opts)
 
   -- Register treesitter parser config if nvim-treesitter is available
   pcall(function()
@@ -194,7 +243,6 @@ function M.setup(opts)
     }
   end)
 
-  -- Buffer-local keymaps: override any global bindings (e.g. Gitsigns) inside .http files
   vim.api.nvim_create_autocmd("FileType", {
     pattern = "http",
     callback = function(ev)
@@ -204,6 +252,9 @@ function M.setup(opts)
       vim.keymap.set("n", "<leader>he", select_environment, { buffer = buf, desc = "Select environment" })
       vim.keymap.set("n", "<leader>hj", jq_filter,          { buffer = buf, desc = "jq filter" })
       vim.keymap.set("n", "<leader>hc", copy_as_curl,       { buffer = buf, desc = "Copy as curl" })
+      vim.keymap.set("n", "<leader>hH", show_history,       { buffer = buf, desc = "Response history" })
+      vim.keymap.set("n", "<leader>hx", capture.clear,      { buffer = buf, desc = "Clear captured vars" })
+      vim.keymap.set("n", "<leader>hC", cookies.clear,      { buffer = buf, desc = "Clear cookie jar" })
     end,
   })
 end

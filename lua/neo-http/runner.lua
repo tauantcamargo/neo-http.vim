@@ -81,6 +81,14 @@ local function build_curl_command(req)
     table.insert(cmd, "-k")
   end
 
+  if req.cookie_jar then
+    local jar = require("neo-http.cookies").get_jar_path()
+    table.insert(cmd, "--cookie")
+    table.insert(cmd, jar)
+    table.insert(cmd, "--cookie-jar")
+    table.insert(cmd, jar)
+  end
+
   local multipart = is_multipart(req.headers)
 
   for _, header in ipairs(req.headers) do
