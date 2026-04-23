@@ -18,6 +18,11 @@ A lightweight HTTP client for Neovim. Write requests in `.http` files and run th
 - **Cookie jar**: `@cookie_jar = true` persists cookies across requests
 - **Response history**: browse past responses with `<leader>hH`
 - **Assertions**: `@assert status == 200` with pass/fail display in response buffer
+- **Import**: convert Postman, Insomnia, and Bruno collections with `<leader>hi`
+- **GraphQL**: `# [graphql]` body marker — auto-builds `{"query":"...","variables":{}}`
+- **WebSocket**: `WS`/`WSS` method — persistent console with send/disconnect keymaps
+- **XML/HTML formatting**: auto-format via `xmllint` / `prettier` based on content-type
+- **Timing breakdown**: DNS / TCP / TTFB shown in the response status line
 - JSON auto-format + interactive jq filtering
 - Syntax highlighting for `.http` files (vim syntax + optional Treesitter)
 - Vertical split response buffer with `q` to close
@@ -30,6 +35,9 @@ A lightweight HTTP client for Neovim. Write requests in `.http` files and run th
 |------|------|
 | `curl` (default) or `httpie` | Executes requests |
 | `jq` | Optional — JSON auto-format + filtering |
+| `websocat` | Optional — WebSocket support (`brew install websocat`) |
+| `xmllint` | Optional — XML response formatting (`brew install libxml2`) |
+| `prettier` | Optional — HTML response formatting (`npm i -g prettier`) |
 | nvim-treesitter + `:TSInstall http` | Optional — richer syntax highlighting |
 
 ---
@@ -83,7 +91,10 @@ Active inside `.http` files. `<leader>hj` also works from the response buffer.
 | `<leader>hH` | Browse response history |
 | `<leader>hx` | Clear captured variables |
 | `<leader>hC` | Clear cookie jar |
-| `q` | Close response buffer |
+| `<leader>hi` | Import Postman / Insomnia / Bruno collection |
+| `<leader>hwm` | WebSocket — send a message |
+| `<leader>hwd` | WebSocket — disconnect |
+| `q` | Close response / WebSocket buffer |
 
 ---
 
@@ -270,6 +281,91 @@ Assertions
 
 Supported operators: `==` `!=` `>` `>=` `<` `<=`
 Supported targets: `status`, `body.<path>`
+
+---
+
+## Importing Collections
+
+Press `<leader>hi` from any buffer to import an existing collection:
+
+| Source | Format detected by |
+|--------|--------------------|
+| Postman | JSON with `info.schema` field (v2.1) |
+| Insomnia | JSON with `resources` field (v4 export) |
+| Bruno | `.bru` file extension |
+
+You will be prompted for the source file and an output `.http` path. The file opens automatically after import, ready to run with `<leader>hr`.
+
+---
+
+## GraphQL
+
+Mark the body with `# [graphql]`. Add variables in a `# [variables]` block:
+
+```http
+###
+POST https://api.example.com/graphql
+Content-Type: application/json
+
+# [graphql]
+query GetUser($id: ID!) {
+  user(id: $id) { name email }
+}
+
+# [variables]
+{ "id": "123" }
+```
+
+The plugin wraps it into `{"query":"...","variables":{...}}` automatically. `Content-Type: application/json` is injected if missing.
+
+---
+
+## WebSocket
+
+Use `WS` or `WSS` as the method and press `<leader>hr` to connect:
+
+```http
+###
+WS wss://echo.websocket.org
+Origin: https://echo.websocket.org
+```
+
+A console buffer opens showing all messages. Requires `websocat` (`brew install websocat`).
+
+| Key | Action |
+|-----|--------|
+| `<leader>hr` | Connect (on a WS/WSS block) |
+| `<leader>hwm` | Send a message |
+| `<leader>hwd` | Disconnect |
+| `q` | Close console + disconnect |
+
+---
+
+## Timing Breakdown
+
+Every response shows a detailed timing line beneath the status:
+
+```
+HTTP/2 200  [145ms]  dns:12ms  tcp:8ms  ttfb:120ms  total:145ms
+```
+
+- **dns** — name resolution time
+- **tcp** — time to TCP connect (minus dns)
+- **ttfb** — time to first byte (minus tcp connect)
+- **total** — full request duration
+
+---
+
+## XML / HTML Responses
+
+Responses with `Content-Type: application/xml` or `text/html` are auto-formatted and the response buffer filetype is set for syntax highlighting.
+
+| Format | Tool |
+|--------|------|
+| XML | `xmllint` (`brew install libxml2`) |
+| HTML | `prettier` (`npm i -g prettier`) |
+
+Falls back to raw text if the tool is not installed.
 
 ---
 
