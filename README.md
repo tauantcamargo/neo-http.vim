@@ -2,8 +2,6 @@
 
 A lightweight HTTP client for Neovim. Write requests in `.http` files and run them without leaving the editor.
 
-> **Status:** Active development — Phase 1 + Phase 2 complete.
-
 ---
 
 ## Features
