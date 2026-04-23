@@ -12,6 +12,7 @@ local history    = require("neo-http.history")
 local assert_mod = require("neo-http.assert")
 local importer   = require("neo-http.importer")
 local format_mod = require("neo-http.format")
+local ws         = require("neo-http.websocket")
 
 local _state = {
   last_raw_body = nil,
@@ -57,6 +58,12 @@ local function run_request()
   req.body = apply_env_vars(req.body, env_vars)
 
   vim.notify(string.format("[neo-http] %s %s", req.method, req.url), vim.log.levels.INFO)
+
+  -- WebSocket requests open a persistent console instead of making an HTTP call
+  if req.is_websocket then
+    ws.connect(req.url, req.headers)
+    return
+  end
 
   local req_name = req.method .. " " .. req.url
 
@@ -295,6 +302,8 @@ function M.setup(opts)
       vim.keymap.set("n", "<leader>hH", show_history,       { buffer = buf, desc = "Response history" })
       vim.keymap.set("n", "<leader>hx", capture.clear,      { buffer = buf, desc = "Clear captured vars" })
       vim.keymap.set("n", "<leader>hC", cookies.clear,      { buffer = buf, desc = "Clear cookie jar" })
+      vim.keymap.set("n", "<leader>hwm", ws.prompt_send,    { buffer = buf, desc = "WebSocket send message" })
+      vim.keymap.set("n", "<leader>hwd", ws.disconnect,     { buffer = buf, desc = "WebSocket disconnect" })
     end,
   })
 end

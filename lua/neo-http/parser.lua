@@ -149,10 +149,11 @@ local function parse_block(lines, block_start, block_end, file_vars)
     vars       = vars,
     url_encode = vars["url_encode"] == "true",
     ssl_verify = vars["ssl_verify"] ~= "false",
-    cookie_jar   = vars["cookie_jar"] == "true",
-    captures     = captures,
-    assertions   = assertions,
-    is_graphql   = is_graphql,
+    cookie_jar    = vars["cookie_jar"] == "true",
+    captures      = captures,
+    assertions    = assertions,
+    is_graphql    = is_graphql,
+    is_websocket  = method == "WS" or method == "WSS",
   }
 end
 
