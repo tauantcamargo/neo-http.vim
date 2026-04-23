@@ -120,7 +120,7 @@ function M.show_response(result, is_json)
   end
 
   write_buf(buf, output)
-  vim.bo[buf].filetype = detect_filetype(result.raw, is_json)
+  vim.bo[buf].filetype = result.override_ft or detect_filetype(result.raw, is_json)
   vim.api.nvim_set_current_win(win)
 end
 

@@ -11,6 +11,7 @@ local cookies    = require("neo-http.cookies")
 local history    = require("neo-http.history")
 local assert_mod = require("neo-http.assert")
 local importer   = require("neo-http.importer")
+local format_mod = require("neo-http.format")
 
 local _state = {
   last_raw_body = nil,
@@ -83,12 +84,19 @@ local function run_request()
       end
     end
 
+    local _, nl_end = result.raw:find("\r?\n\r?\n")
     if is_json and jq.has_jq() then
       local formatted = jq.format(body)
-      local _, nl_end = result.raw:find("\r?\n\r?\n")
       if nl_end then
         result.raw = result.raw:sub(1, nl_end) .. formatted
       end
+    else
+      -- XML / HTML formatting
+      local fmt = format_mod.detect_and_format(result.raw, body, is_json)
+      if fmt.filetype ~= "text" and nl_end then
+        result.raw = result.raw:sub(1, nl_end) .. fmt.content
+      end
+      result.override_ft = fmt.filetype
     end
 
     result.request_line = req.method .. " " .. req.url
